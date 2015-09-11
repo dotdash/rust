@@ -710,7 +710,11 @@ pub fn invoke<'blk, 'tcx>(bcx: Block<'blk, 'tcx>,
         }
     }
 
-    if need_invoke(bcx) {
+    let may_unwind = unsafe {
+        Value(llfn).is_a_function() &&
+            (llvm::LLVMGetFunctionAttr(llfn) as u64) & llvm::Attribute::NoUnwind.bits() == 0
+    };
+    if may_unwind && need_invoke(bcx) {
         debug!("invoking {} at {:?}", bcx.val_to_string(llfn), bcx.llbb);
         for &llarg in llargs {
             debug!("arg: {}", bcx.val_to_string(llarg));

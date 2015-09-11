@@ -1559,6 +1559,7 @@ extern {
 
 
     /* Selected entries from the downcasts. */
+    pub fn LLVMIsAFunction(V: ValueRef) -> ValueRef;
     pub fn LLVMIsATerminatorInst(Inst: ValueRef) -> ValueRef;
     pub fn LLVMIsAStoreInst(Inst: ValueRef) -> ValueRef;
 

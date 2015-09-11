@@ -122,6 +122,13 @@ impl Value {
             !llvm::LLVMIsATerminatorInst(self.get()).is_null()
         }
     }
+
+    /// Tests if this value is a function
+    pub fn is_a_function(self) -> bool {
+        unsafe {
+            !llvm::LLVMIsAFunction(self.get()).is_null()
+        }
+    }
 }
 
 /// Wrapper for LLVM UseRef
