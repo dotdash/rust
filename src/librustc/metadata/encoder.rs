@@ -553,6 +553,11 @@ fn encode_struct_field_family(rbml_w: &mut Encoder,
     });
 }
 
+fn encode_unwinding(rbml_w: &mut Encoder, nounwind: bool) {
+    let ch = if nounwind { 'n' } else { 'u' };
+    rbml_w.wr_tagged_u8(tag_function_nounwind, ch as u8);
+}
+
 fn encode_visibility(rbml_w: &mut Encoder, visibility: ast::Visibility) {
     let ch = match visibility {
         ast::Public => 'y',
@@ -834,6 +839,7 @@ fn encode_info_for_method<'a, 'tcx>(ecx: &EncodeContext<'a, 'tcx>,
 
     let stab = stability::lookup(ecx.tcx, m.def_id);
     encode_stability(rbml_w, stab);
+    encode_unwinding(rbml_w, ecx.tcx.is_nounwind_function(m.def_id.local_id()));
 
     // The type for methods gets encoded twice, which is unfortunate.
     encode_bounds_and_type_for_item(rbml_w, ecx, m.def_id.local_id());
@@ -1052,6 +1058,7 @@ fn encode_info_for_item(ecx: &EncodeContext,
         if tps_len == 0 {
             encode_symbol(ecx, rbml_w, item.id);
         }
+        encode_unwinding(rbml_w, tcx.is_nounwind_function(item.id));
         encode_constness(rbml_w, constness);
         encode_visibility(rbml_w, vis);
         encode_stability(rbml_w, stab);

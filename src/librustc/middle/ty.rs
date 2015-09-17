@@ -739,6 +739,8 @@ pub struct ctxt<'tcx> {
     region_interner: RefCell<FnvHashMap<&'tcx Region, &'tcx Region>>,
     stability_interner: RefCell<FnvHashMap<&'tcx attr::Stability, &'tcx attr::Stability>>,
 
+    nounwind_functions: RefCell<NodeSet>,
+
     /// Common types, pre-interned for your convenience.
     pub types: CommonTypes<'tcx>,
 
@@ -951,6 +953,14 @@ impl<'tcx> ctxt<'tcx> {
         let interned = self.arenas.stability.alloc(stab);
         self.stability_interner.borrow_mut().insert(interned, interned);
         interned
+    }
+
+    pub fn nounwind_function(&self, id: NodeId) {
+        self.nounwind_functions.borrow_mut().insert(id);
+    }
+
+    pub fn is_nounwind_function(&self, id: NodeId) -> bool {
+        self.nounwind_functions.borrow_mut().contains(&id)
     }
 
     pub fn store_free_region_map(&self, id: NodeId, map: FreeRegionMap) {
@@ -3877,6 +3887,7 @@ impl<'tcx> ctxt<'tcx> {
             bare_fn_interner: RefCell::new(FnvHashMap()),
             region_interner: RefCell::new(FnvHashMap()),
             stability_interner: RefCell::new(FnvHashMap()),
+            nounwind_functions: RefCell::new(NodeSet()),
             types: common_types,
             named_region_map: named_region_map,
             region_maps: region_maps,

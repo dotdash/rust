@@ -1037,6 +1037,21 @@ pub fn get_tuple_struct_definition_if_ctor(cdata: Cmd,
     })
 }
 
+pub fn get_function_unwinding(cdata: Cmd,
+                              node_id: ast::NodeId) -> bool {
+    let item = cdata.lookup_item(node_id);
+    match reader::maybe_get_doc(item, tag_function_nounwind) {
+        None => true,
+        Some(unwinding_doc) => {
+            match reader::doc_as_u8(unwinding_doc) as char {
+                'n' => false,
+                'u' => true,
+                _ => panic!("unknown unwinding character")
+            }
+        }
+    }
+}
+
 pub fn get_item_attrs(cdata: Cmd,
                       orig_node_id: ast::NodeId)
                       -> Vec<hir::Attribute> {

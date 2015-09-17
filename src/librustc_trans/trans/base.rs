@@ -191,6 +191,7 @@ fn get_extern_rust_fn<'a, 'tcx>(ccx: &CrateContext<'a, 'tcx>, fn_ty: Ty<'tcx>,
 
     let attrs = csearch::get_item_attrs(&ccx.sess().cstore, did);
     attributes::from_fn_attrs(ccx, &attrs[..], f);
+    attributes::unwind(f, csearch::get_function_unwinding(&ccx.sess().cstore, did));
 
     ccx.externs().borrow_mut().insert(name.to_string(), f);
     f
@@ -711,8 +712,11 @@ pub fn invoke<'blk, 'tcx>(bcx: Block<'blk, 'tcx>,
     }
 
     let may_unwind = unsafe {
-        Value(llfn).is_a_function() &&
+        !Value(llfn).is_a_function() ||
             (llvm::LLVMGetFunctionAttr(llfn) as u64) & llvm::Attribute::NoUnwind.bits() == 0
+    };
+    if may_unwind {
+        bcx.fcx.may_unwind.set(true);
     };
     if may_unwind && need_invoke(bcx) {
         debug!("invoking {} at {:?}", bcx.val_to_string(llfn), bcx.llbb);
@@ -1235,6 +1239,7 @@ pub fn new_fn_ctxt<'a, 'tcx>(ccx: &'a CrateContext<'a, 'tcx>,
           alloca_insert_pt: Cell::new(None),
           llreturn: Cell::new(None),
           needs_ret_allocas: nested_returns,
+          may_unwind: Cell::new(false),
           personality: Cell::new(None),
           caller_expects_out_pointer: uses_outptr,
           lllocals: RefCell::new(NodeMap()),
@@ -1490,6 +1495,11 @@ pub fn finish_fn<'blk, 'tcx>(fcx: &'blk FunctionContext<'blk, 'tcx>,
     // as new_fn_ctxt did it already.
     let substd_retty = fcx.monomorphize(&retty);
     build_return_block(fcx, ret_cx, substd_retty, ret_debug_loc);
+
+    if !fcx.may_unwind.get() {
+        attributes::unwind(fcx.llfn, false);
+        fcx.ccx.tcx().nounwind_function(fcx.id);
+    }
 
     debuginfo::clear_source_location(fcx);
     fcx.cleanup();

@@ -184,6 +184,12 @@ pub fn get_methods_if_impl(cstore: &cstore::CStore,
     decoder::get_methods_if_impl(cstore.intr.clone(), &*cdata, def.node)
 }
 
+pub fn get_function_unwinding(cstore: &cstore::CStore,
+                              def_id: DefId) -> bool {
+    let cdata = cstore.get_crate_data(def_id.krate);
+    decoder::get_function_unwinding(&*cdata, def_id.node)
+}
+
 pub fn get_item_attrs(cstore: &cstore::CStore,
                       def_id: DefId)
                       -> Vec<hir::Attribute> {

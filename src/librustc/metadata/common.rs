@@ -259,3 +259,5 @@ pub const tag_defaulted_trait: usize = 0xa4;
 pub const tag_impl_coerce_unsized_kind: usize = 0xa5;
 
 pub const tag_items_data_item_constness: usize = 0xa6;
+
+pub const tag_function_nounwind: usize = 0xa7;

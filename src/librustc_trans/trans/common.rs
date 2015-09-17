@@ -421,6 +421,8 @@ pub struct FunctionContext<'a, 'tcx: 'a> {
     // we use a separate alloca for each return
     pub needs_ret_allocas: bool,
 
+    pub may_unwind: Cell<bool>,
+
     // The a value alloca'd for calls to upcalls.rust_personality. Used when
     // outputting the resume instruction.
     pub personality: Cell<Option<ValueRef>>,

@@ -21,6 +21,7 @@ use syntax::codemap::Span;
 use trans::builder::Builder;
 use trans::type_::Type;
 use trans::debuginfo::DebugLoc;
+use trans::value::Value;
 
 use libc::{c_uint, c_char};
 
@@ -144,6 +145,7 @@ pub fn Invoke(cx: Block,
     if cx.unreachable.get() {
         return C_null(Type::i8(cx.ccx()));
     }
+    cx.fcx.may_unwind.set(true);
     check_not_terminated(cx);
     terminate(cx, "Invoke");
     debug!("Invoke({} with arguments ({}))",
@@ -901,6 +903,7 @@ pub fn InlineAsmCall(cx: Block, asm: *const c_char, cons: *const c_char,
                      inputs: &[ValueRef], output: Type,
                      volatile: bool, alignstack: bool,
                      dia: AsmDialect) -> ValueRef {
+    cx.fcx.may_unwind.set(true);
     B(cx).inline_asm_call(asm, cons, inputs, output, volatile, alignstack, dia)
 }
 
@@ -912,6 +915,12 @@ pub fn Call(cx: Block,
             -> ValueRef {
     if cx.unreachable.get() {
         return _UndefReturn(cx, fn_);
+    }
+    unsafe {
+        if !Value(fn_).is_a_function() ||
+                (llvm::LLVMGetFunctionAttr(fn_) as u64) & llvm::Attribute::NoUnwind.bits() == 0 {
+            cx.fcx.may_unwind.set(true);
+        };
     }
     debug_loc.apply(cx.fcx);
     B(cx).call(fn_, args, attributes)
@@ -926,6 +935,12 @@ pub fn CallWithConv(cx: Block,
                     -> ValueRef {
     if cx.unreachable.get() {
         return _UndefReturn(cx, fn_);
+    }
+    unsafe {
+        if !Value(fn_).is_a_function() ||
+                (llvm::LLVMGetFunctionAttr(fn_) as u64) & llvm::Attribute::NoUnwind.bits() == 0 {
+            cx.fcx.may_unwind.set(true);
+        };
     }
     debug_loc.apply(cx.fcx);
     B(cx).call_with_conv(fn_, args, conv, attributes)
