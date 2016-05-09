@@ -936,6 +936,7 @@ pub fn phase_3_run_analysis_passes<'tcx, F, R>(sess: &'tcx Session,
         time(time_passes, "MIR passes", || {
             let mut passes = sess.mir_passes.borrow_mut();
             // Push all the built-in passes.
+            passes.push_pass(box mir::transform::remove_drops::RemoveDrops);
             passes.push_pass(box mir::transform::remove_dead_blocks::RemoveDeadBlocks);
             passes.push_pass(box mir::transform::qualify_consts::QualifyAndPromoteConstants);
             passes.push_pass(box mir::transform::type_check::TypeckMir);
