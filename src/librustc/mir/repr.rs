@@ -793,6 +793,24 @@ pub enum Rvalue<'tcx> {
     }
 }
 
+impl<'tcx> Rvalue<'tcx> {
+    pub fn operands_mut(&mut self) -> Vec<&mut Operand<'tcx>> {
+        use self::Rvalue::*;
+        match *self {
+            Use(ref mut op) |
+            Repeat(ref mut op, _) |
+            Cast(_, ref mut op, _) |
+            UnaryOp(_, ref mut op) => vec![op],
+
+            BinaryOp(_, ref mut op1, ref mut op2) => vec![op1, op2],
+
+            Aggregate(_, ref mut v) | InlineAsm { inputs: ref mut v, .. } => v.iter_mut().collect(),
+
+            Ref(..) | Len(_) | Box(_) | Slice { .. } => Vec::new(),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, RustcEncodable, RustcDecodable)]
 pub enum CastKind {
     Misc,

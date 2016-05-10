@@ -59,8 +59,13 @@ pub fn dump_mir<'a, 'tcx>(tcx: TyCtxt<'a, 'tcx, 'tcx>,
         return;
     }
 
-    let file_name = format!("rustc.node{}.{}.{}.mir",
-                            node_id, pass_name, disambiguator);
+    let prom = if let MirSource::Promoted(_, p) = src {
+        format!("_p{}", p)
+    } else {
+        String::new()
+    };
+    let file_name = format!("rustc.node{}{}.{}.{}.mir",
+                            node_id, prom, pass_name, disambiguator);
     let _ = fs::File::create(&file_name).and_then(|mut file| {
         try!(writeln!(file, "// MIR for `{}`", node_path));
         try!(writeln!(file, "// node_id = {}", node_id));

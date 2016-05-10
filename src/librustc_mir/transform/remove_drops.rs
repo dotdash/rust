@@ -18,7 +18,9 @@ use super::predecessor_map::*;
 pub struct RemoveDrops;
 
 impl<'tcx> MirPass<'tcx> for RemoveDrops {
-    fn run_pass(&mut self, tcx: &TyCtxt<'tcx>, src: MirSource, mir: &mut Mir<'tcx>) {
+    fn run_pass<'a>(&mut self, tcx: TyCtxt<'a, 'tcx, 'tcx>, src: MirSource, mir: &mut Mir<'tcx>) {
+        loop {
+        let mut changed = false;
         let predecessor_map = build_predecessor_map(mir);
         for cur_bb in mir.all_basic_blocks() {
             // Temporarily take ownership of the terminator we're modifying to keep borrowck happy
@@ -142,8 +144,7 @@ impl<'tcx> MirPass<'tcx> for RemoveDrops {
                         let predecessors = predecessor_map.predecessors(bb);
                         if predecessors.is_empty() {
                             debug!("Reached function start");
-                            replacement = None;
-                            break 'work;
+                            continue 'work;
                         }
 
                         worklist.extend(predecessors);
@@ -154,8 +155,13 @@ impl<'tcx> MirPass<'tcx> for RemoveDrops {
             };
             debug!("Setting terminator in block: {:?}", cur_bb);
             if let Some(replacement) = replacement {
+                changed = true;
                 mir.basic_block_data_mut(cur_bb).terminator_mut().kind = replacement;
             }
+        }
+        if !changed {
+            break;
+        }
         }
         pretty::dump_mir(tcx, "remove_drops", &0, src, mir, None);
     }

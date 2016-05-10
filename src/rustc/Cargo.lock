@@ -4,7 +4,6 @@ version = "0.0.0"
 dependencies = [
  "rustc_back 0.0.0",
  "rustc_driver 0.0.0",
- "rustdoc 0.0.0",
 ]
 
 [[package]]
@@ -304,26 +303,6 @@ dependencies = [
  "rustc_const_eval 0.0.0",
  "rustc_const_math 0.0.0",
  "rustc_platform_intrinsics 0.0.0",
- "syntax 0.0.0",
-]
-
-[[package]]
-name = "rustdoc"
-version = "0.0.0"
-dependencies = [
- "arena 0.0.0",
- "build_helper 0.1.0",
- "gcc 0.3.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "log 0.0.0",
- "rustc 0.0.0",
- "rustc_back 0.0.0",
- "rustc_const_eval 0.0.0",
- "rustc_driver 0.0.0",
- "rustc_lint 0.0.0",
- "rustc_metadata 0.0.0",
- "rustc_resolve 0.0.0",
- "rustc_trans 0.0.0",
- "serialize 0.0.0",
  "syntax 0.0.0",
 ]
 
