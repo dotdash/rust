@@ -202,11 +202,6 @@ impl<'tcx> Action<'tcx> {
                 debug!("  Replacing all uses of {:?} with {:?} (local)",
                        dest_local,
                        src_local);
-                for place_use in &def_use_analysis.local_info(dest_local).defs_and_uses {
-                    if place_use.context.is_storage_marker() {
-                        mir.make_statement_nop(place_use.location)
-                    }
-                }
                 for place_use in &def_use_analysis.local_info(src_local).defs_and_uses {
                     if place_use.context.is_storage_marker() {
                         mir.make_statement_nop(place_use.location)
@@ -223,18 +218,10 @@ impl<'tcx> Action<'tcx> {
                 false
             }
             Action::PropagateConstant(src_constant) => {
-                // First, remove all markers.
-                //
-                // FIXME(pcwalton): Don't do this. Merge live ranges instead.
                 debug!("  Replacing all uses of {:?} with {:?} (constant)",
                        dest_local,
                        src_constant);
                 let dest_local_info = def_use_analysis.local_info(dest_local);
-                for place_use in &dest_local_info.defs_and_uses {
-                    if place_use.context.is_storage_marker() {
-                        mir.make_statement_nop(place_use.location)
-                    }
-                }
 
                 // Replace all uses of the destination local with the constant.
                 let mut visitor = ConstantPropagationVisitor::new(dest_local,
