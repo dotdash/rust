@@ -17,7 +17,7 @@ pub struct Info<'tcx> {
     pub defs_and_uses: Vec<Use<'tcx>>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct Use<'tcx> {
     pub context: PlaceContext<'tcx>,
     pub location: Location,
@@ -50,23 +50,27 @@ impl<'tcx> DefUseAnalysis<'tcx> {
         &self.info[local]
     }
 
-    fn mutate_defs_and_uses<F>(&self, local: Local, mir: &mut Mir<'tcx>, mut callback: F)
+    fn mutate_defs_and_uses<F>(&mut self, local: Local, mir: &mut Mir<'tcx>, mut callback: F)
                                where F: for<'a> FnMut(&'a mut Local,
                                                       PlaceContext<'tcx>,
                                                       Location) {
-        for place_use in &self.info[local].defs_and_uses {
+        for place_use in &self.info[local].defs_and_uses.clone() {
             MutateUseVisitor::new(local,
-                                  &mut callback,
+                                  |local, context, location| {
+                                      self.info[*local].defs_and_uses.remove_item(&Use { context, location });
+                                      callback(local, context, location);
+                                      self.info[*local].defs_and_uses.push(Use { context, location });
+                                  },
                                   mir).visit_location(mir, place_use.location)
         }
     }
 
     /// FIXME(pcwalton): This should update the def-use chains.
-    pub fn replace_all_defs_and_uses_with(&self,
+    pub fn replace_all_defs_and_uses_with(&mut self,
                                           local: Local,
                                           mir: &mut Mir<'tcx>,
                                           new_local: Local) {
-        self.mutate_defs_and_uses(local, mir, |local, _, _| *local = new_local)
+        self.mutate_defs_and_uses(local, mir, |local, _, _| *local = new_local);
     }
 }
 
@@ -144,7 +148,7 @@ impl<'tcx, F> MutVisitor<'tcx> for MutateUseVisitor<'tcx, F>
                     local: &mut Local,
                     context: PlaceContext<'tcx>,
                     location: Location) {
-        if *local == self.query {
+        if context.is_use() && *local == self.query {
             (self.callback)(local, context, location)
         }
     }

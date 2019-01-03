@@ -96,13 +96,18 @@ pub use self::on_disk_cache::OnDiskCache;
 // Queries marked with `fatal_cycle` do not need the latter implementation,
 // as they will raise an fatal error on query cycles instead.
 define_queries! { <'tcx>
-    Other {
+    TypeOfItem {
         /// Records the type of every item.
         [] fn type_of: TypeOfItem(DefId) -> Ty<'tcx>,
+    },
 
+    GenericsOfItem {
         /// Maps from the def-id of an item (trait/struct/enum/fn) to its
         /// associated generics.
         [] fn generics_of: GenericsOfItem(DefId) -> &'tcx ty::Generics,
+    },
+
+    PredicatesOfItem {
 
         /// Maps from the def-id of an item (trait/struct/enum/fn) to the
         /// predicates (where clauses) that must be proven true in order
@@ -120,6 +125,9 @@ define_queries! { <'tcx>
         /// to operate over only the actual where-clauses written by the
         /// user.)
         [] fn predicates_of: PredicatesOfItem(DefId) -> Lrc<ty::GenericPredicates<'tcx>>,
+    },
+
+    PredicatesDefinedOnItem {
 
         /// Maps from the def-id of an item (trait/struct/enum/fn) to the
         /// predicates (where clauses) directly defined on it. This is
@@ -127,14 +135,23 @@ define_queries! { <'tcx>
         /// `inferred_outlives_of` predicates.
         [] fn predicates_defined_on: PredicatesDefinedOnItem(DefId)
             -> Lrc<ty::GenericPredicates<'tcx>>,
+    },
+
+    ExplicitPredicatesOfItem {
 
         /// Returns the predicates written explicit by the user.
         [] fn explicit_predicates_of: ExplicitPredicatesOfItem(DefId)
             -> Lrc<ty::GenericPredicates<'tcx>>,
+    },
+
+    InferredOutlivesOf {
 
         /// Returns the inferred outlives predicates (e.g., for `struct
         /// Foo<'a, T> { x: &'a T }`, this would return `T: 'a`).
         [] fn inferred_outlives_of: InferredOutlivesOf(DefId) -> Lrc<Vec<ty::Predicate<'tcx>>>,
+    },
+
+    SuperPredicatesOfItem {
 
         /// Maps from the def-id of a trait to the list of
         /// super-predicates. This is a subset of the full list of
@@ -143,19 +160,40 @@ define_queries! { <'tcx>
         /// full predicates are available (note that supertraits have
         /// additional acyclicity requirements).
         [] fn super_predicates_of: SuperPredicatesOfItem(DefId) -> Lrc<ty::GenericPredicates<'tcx>>,
+    },
+
+    TypeParamPredicates {
 
         /// To avoid cycles within the predicates of a single item we compute
         /// per-type-parameter predicates for resolving `T::AssocTy`.
         [] fn type_param_predicates: type_param_predicates((DefId, DefId))
             -> Lrc<ty::GenericPredicates<'tcx>>,
+    },
+
+    TraitDefOfItem {
 
         [] fn trait_def: TraitDefOfItem(DefId) -> &'tcx ty::TraitDef,
+    },
+
+    AdtDefOfItem {
         [] fn adt_def: AdtDefOfItem(DefId) -> &'tcx ty::AdtDef,
+    },
+
+    AdtDestructor {
         [] fn adt_destructor: AdtDestructor(DefId) -> Option<ty::Destructor>,
+    },
+
+    SizedConstraint {
         [] fn adt_sized_constraint: SizedConstraint(DefId) -> &'tcx [Ty<'tcx>],
+    },
+
+    DtorckConstraint {
         [] fn adt_dtorck_constraint: DtorckConstraint(
             DefId
         ) -> Result<DtorckConstraint<'tcx>, NoSolution>,
+    },
+
+    IsConstFn {
 
         /// True if this is a const fn, use the `is_const_fn` to know whether your crate actually
         /// sees it as const fn (e.g., the const-fn-ness might be unstable and you might not have
@@ -164,6 +202,9 @@ define_queries! { <'tcx>
         /// **Do not call this function manually.** It is only meant to cache the base data for the
         /// `is_const_fn` function.
         [] fn is_const_fn_raw: IsConstFn(DefId) -> bool,
+    },
+
+    IsPromotableConstFn {
 
 
         /// Returns true if calls to the function may be promoted
@@ -174,37 +215,55 @@ define_queries! { <'tcx>
         /// function does not inspect the bits of any of its arguments (so is essentially just a
         /// constructor function).
         [] fn is_promotable_const_fn: IsPromotableConstFn(DefId) -> bool,
+    },
+
+    IsForeignItem {
 
         /// True if this is a foreign item (i.e., linked via `extern { ... }`).
         [] fn is_foreign_item: IsForeignItem(DefId) -> bool,
+    },
+
+    CrateVariances {
 
         /// Get a map with the variance of every item; use `item_variance`
         /// instead.
         [] fn crate_variances: crate_variances(CrateNum) -> Lrc<ty::CrateVariancesMap>,
+    },
+
+    ItemVariances {
 
         /// Maps from def-id of a type or region parameter to its
         /// (inferred) variance.
         [] fn variances_of: ItemVariances(DefId) -> Lrc<Vec<ty::Variance>>,
     },
 
-    TypeChecking {
+    InferredOutlivesCrate {
         /// Maps from def-id of a type to its (inferred) outlives.
         [] fn inferred_outlives_crate: InferredOutlivesCrate(CrateNum)
             -> Lrc<ty::CratePredicatesMap<'tcx>>,
     },
 
-    Other {
+    AssociatedItemDefIds {
         /// Maps from an impl/trait def-id to a list of the def-ids of its items
         [] fn associated_item_def_ids: AssociatedItemDefIds(DefId) -> Lrc<Vec<DefId>>,
+    },
+
+    AssociatedItems {
 
         /// Maps from a trait item to the trait item "descriptor"
         [] fn associated_item: AssociatedItems(DefId) -> ty::AssociatedItem,
+    },
+
+    ImplTraitRef {
 
         [] fn impl_trait_ref: ImplTraitRef(DefId) -> Option<ty::TraitRef<'tcx>>,
+    },
+
+    ImplPolarity {
         [] fn impl_polarity: ImplPolarity(DefId) -> hir::ImplPolarity,
     },
 
-    TypeChecking {
+    InherentImpls {
         /// Maps a DefId of a type to a list of its inherent impls.
         /// Contains implementations of methods that are inherent to a type.
         /// Methods in these implementations don't need to be exported.
@@ -239,35 +298,47 @@ define_queries! { <'tcx>
         [] fn optimized_mir: MirOptimized(DefId) -> &'tcx mir::Mir<'tcx>,
     },
 
-    TypeChecking {
+    UnsafeteCheckResult {
         /// The result of unsafety-checking this def-id.
         [] fn unsafety_check_result: UnsafetyCheckResult(DefId) -> mir::UnsafetyCheckResult,
+    },
+
+    UnsafeDeriveOnReprPacked {
 
         /// HACK: when evaluated, this reports a "unsafe derive on repr(packed)" error
         [] fn unsafe_derive_on_repr_packed: UnsafeDeriveOnReprPacked(DefId) -> (),
+    },
+
+    FnSig {
 
         /// The signature of functions and closures.
         [] fn fn_sig: FnSignature(DefId) -> ty::PolyFnSig<'tcx>,
     },
 
-    Other {
+    CoerceUnsizedInfo {
         /// Caches CoerceUnsized kinds for impls on custom types.
         [] fn coerce_unsized_info: CoerceUnsizedInfo(DefId)
             -> ty::adjustment::CoerceUnsizedInfo,
     },
 
-    TypeChecking {
+    TypeckItemBodies {
         [] fn typeck_item_bodies: typeck_item_bodies_dep_node(CrateNum) -> CompileResult,
+    },
+
+    TypeckTablesOf {
 
         [] fn typeck_tables_of: TypeckTables(DefId) -> &'tcx ty::TypeckTables<'tcx>,
     },
 
-    Other {
+    UsedTraitImports {
         [] fn used_trait_imports: UsedTraitImports(DefId) -> Lrc<DefIdSet>,
     },
 
-    TypeChecking {
+    HasTypeckTables {
         [] fn has_typeck_tables: HasTypeckTables(DefId) -> bool,
+    },
+
+    CoherentTrait {
 
         [] fn coherent_trait: CoherenceCheckTrait(DefId) -> (),
     },
@@ -280,12 +351,15 @@ define_queries! { <'tcx>
         [] fn mir_borrowck: MirBorrowCheck(DefId) -> mir::BorrowCheckResult<'tcx>,
     },
 
-    TypeChecking {
+    CrateInherentImpls {
         /// Gets a complete map from all types to their inherent impls.
         /// Not meant to be used directly outside of coherence.
         /// (Defined only for LOCAL_CRATE)
         [] fn crate_inherent_impls: crate_inherent_impls_dep_node(CrateNum)
             -> Lrc<CrateInherentImpls>,
+    },
+
+    CrateInherentImplsOverlapCheck {
 
         /// Checks all types in the krate for overlap in their inherent impls. Reports errors.
         /// Not meant to be used directly outside of coherence.
@@ -294,7 +368,7 @@ define_queries! { <'tcx>
             -> (),
     },
 
-    Other {
+    ConstEvalRawDepNode {
         /// Evaluate a constant without running sanity checks
         ///
         /// DO NOT USE THIS outside const eval. Const eval uses this to break query cycles during
@@ -302,6 +376,9 @@ define_queries! { <'tcx>
         /// isn't sufficient
         [] fn const_eval_raw: const_eval_raw_dep_node(ty::ParamEnvAnd<'tcx, GlobalId<'tcx>>)
             -> ConstEvalRawResult<'tcx>,
+    },
+
+    ConstEvalDepNode {
 
         /// Results of evaluating const items or constants embedded in
         /// other items (such as enum variant explicit discriminants).
@@ -309,30 +386,60 @@ define_queries! { <'tcx>
             -> ConstEvalResult<'tcx>,
     },
 
-    TypeChecking {
+    CheckMatch {
         [] fn check_match: CheckMatch(DefId)
             -> Result<(), ErrorReported>,
+    },
+
+    PrivacyAccessLevels {
 
         /// Performs the privacy check and computes "access levels".
         [] fn privacy_access_levels: PrivacyAccessLevels(CrateNum) -> Lrc<AccessLevels>,
     },
 
-    Other {
+    ReachabilityDepNode {
         [] fn reachable_set: reachability_dep_node(CrateNum) -> ReachableSet,
+    },
+
+    RegionScopeTree {
 
         /// Per-body `region::ScopeTree`. The `DefId` should be the owner-def-id for the body;
         /// in the case of closures, this will be redirected to the enclosing function.
         [] fn region_scope_tree: RegionScopeTree(DefId) -> Lrc<region::ScopeTree>,
+    },
+
+    MirShimDepNode {
 
         [] fn mir_shims: mir_shim_dep_node(ty::InstanceDef<'tcx>) -> &'tcx mir::Mir<'tcx>,
+    },
+
+    SymbolName {
 
         [] fn def_symbol_name: SymbolName(DefId) -> ty::SymbolName,
+    },
+
+    SymbolNameDepNode {
         [] fn symbol_name: symbol_name_dep_node(ty::Instance<'tcx>) -> ty::SymbolName,
+    },
+
+    DescribeDef {
 
         [] fn describe_def: DescribeDef(DefId) -> Option<Def>,
+    },
+
+    DefSpan {
         [] fn def_span: DefSpan(DefId) -> Span,
+    },
+
+    LookupStability {
         [] fn lookup_stability: LookupStability(DefId) -> Option<&'tcx attr::Stability>,
+    },
+
+    LookupDeprecationEntry {
         [] fn lookup_deprecation_entry: LookupDeprecationEntry(DefId) -> Option<DeprecationEntry>,
+    },
+
+    ItemAttrs {
         [] fn item_attrs: ItemAttrs(DefId) -> Lrc<[ast::Attribute]>,
     },
 
@@ -340,17 +447,29 @@ define_queries! { <'tcx>
         [] fn codegen_fn_attrs: codegen_fn_attrs(DefId) -> CodegenFnAttrs,
     },
 
-    Other {
+    FnArgNames {
         [] fn fn_arg_names: FnArgNames(DefId) -> Vec<ast::Name>,
+    },
+
+    RenderedConst {
         /// Gets the rendered value of the specified constant or associated constant.
         /// Used by rustdoc.
         [] fn rendered_const: RenderedConst(DefId) -> String,
+    },
+
+    ImplParent {
         [] fn impl_parent: ImplParent(DefId) -> Option<DefId>,
     },
 
-    TypeChecking {
+    TraitOfItem {
         [] fn trait_of_item: TraitOfItem(DefId) -> Option<DefId>,
+    },
+
+    ConstIsRValuePromotableToStatic {
         [] fn const_is_rvalue_promotable_to_static: ConstIsRvaluePromotableToStatic(DefId) -> bool,
+    },
+
+    RValuePromotableMap {
         [] fn rvalue_promotable_map: RvaluePromotableMap(DefId) -> Lrc<ItemLocalSet>,
     },
 
@@ -358,7 +477,7 @@ define_queries! { <'tcx>
         [] fn is_mir_available: IsMirAvailable(DefId) -> bool,
     },
 
-    Other {
+    VtableMethodsNode {
         [] fn vtable_methods: vtable_methods_node(ty::PolyTraitRef<'tcx>)
                             -> Lrc<Vec<Option<(DefId, &'tcx Substs<'tcx>)>>>,
     },
@@ -368,11 +487,20 @@ define_queries! { <'tcx>
             (ty::ParamEnv<'tcx>, ty::PolyTraitRef<'tcx>)) -> Vtable<'tcx, ()>,
     },
 
-    TypeChecking {
+    TraitImplsOf {
         [] fn trait_impls_of: TraitImpls(DefId) -> Lrc<ty::trait_def::TraitImpls>,
+    },
+
+    SpecializationGraphOf {
         [] fn specialization_graph_of: SpecializationGraph(DefId)
             -> Lrc<specialization_graph::Graph>,
+    },
+
+    IsObjectSafe {
         [] fn is_object_safe: ObjectSafety(DefId) -> bool,
+    },
+
+    ParamEnv {
 
         /// Get the ParameterEnvironment for a given item; this environment
         /// will be in "user-facing" mode, meaning that it is suitabe for
@@ -381,19 +509,34 @@ define_queries! { <'tcx>
         /// unless you are doing MIR optimizations, in which case you
         /// might want to use `reveal_all()` method to change modes.
         [] fn param_env: ParamEnv(DefId) -> ty::ParamEnv<'tcx>,
+    },
+
+    IsCopyRaw {
 
         /// Trait selection queries. These are best used by invoking `ty.moves_by_default()`,
         /// `ty.is_copy()`, etc, since that will prune the environment where possible.
         [] fn is_copy_raw: is_copy_dep_node(ty::ParamEnvAnd<'tcx, Ty<'tcx>>) -> bool,
+    },
+
+    IsSizedRaw {
         [] fn is_sized_raw: is_sized_dep_node(ty::ParamEnvAnd<'tcx, Ty<'tcx>>) -> bool,
+    },
+
+    IsFreezeRaw {
         [] fn is_freeze_raw: is_freeze_dep_node(ty::ParamEnvAnd<'tcx, Ty<'tcx>>) -> bool,
+    },
+
+    NeedsDropRaw {
         [] fn needs_drop_raw: needs_drop_dep_node(ty::ParamEnvAnd<'tcx, Ty<'tcx>>) -> bool,
+    },
+
+    LayoutRaw {
         [] fn layout_raw: layout_dep_node(ty::ParamEnvAnd<'tcx, Ty<'tcx>>)
                                     -> Result<&'tcx ty::layout::LayoutDetails,
                                                 ty::layout::LayoutError<'tcx>>,
     },
 
-    Other {
+    DylibDepFormats {
         [] fn dylib_dependency_formats: DylibDepFormats(CrateNum)
                                         -> Lrc<Vec<(CrateNum, LinkagePreference)>>,
     },
@@ -411,22 +554,37 @@ define_queries! { <'tcx>
         [] fn extern_crate: ExternCrate(DefId) -> Lrc<Option<ExternCrate>>,
     },
 
-    TypeChecking {
+    Specializes {
         [] fn specializes: specializes_node((DefId, DefId)) -> bool,
+    },
+
+    IsScopeTraitsMap {
         [] fn in_scope_traits_map: InScopeTraits(DefIndex)
             -> Option<Lrc<FxHashMap<ItemLocalId, Lrc<StableVec<TraitCandidate>>>>>,
     },
 
-    Other {
+    ModuleExports {
         [] fn module_exports: ModuleExports(DefId) -> Option<Lrc<Vec<Export>>>,
+    },
+
+    LintLevelsNode {
         [] fn lint_levels: lint_levels_node(CrateNum) -> Lrc<lint::LintLevelMap>,
     },
 
-    TypeChecking {
+    ImplDefaultness {
         [] fn impl_defaultness: ImplDefaultness(DefId) -> hir::Defaultness,
+    },
+
+    CheckItemWellFormed {
 
         [] fn check_item_well_formed: CheckItemWellFormed(DefId) -> (),
+    },
+
+    CheckTraitItemWellFormed {
         [] fn check_trait_item_well_formed: CheckTraitItemWellFormed(DefId) -> (),
+    },
+
+    CheckImplItemWellFormed {
         [] fn check_impl_item_well_formed: CheckImplItemWellFormed(DefId) -> (),
     },
 
@@ -456,31 +614,64 @@ define_queries! { <'tcx>
             -> Option<Lrc<FxHashMap<&'tcx Substs<'tcx>, CrateNum>>>,
     },
 
-    Other {
+    NativeLibraries {
         [] fn native_libraries: NativeLibraries(CrateNum) -> Lrc<Vec<NativeLibrary>>,
+    },
+
+    ForeignModules {
 
         [] fn foreign_modules: ForeignModules(CrateNum) -> Lrc<Vec<ForeignModule>>,
+    },
+
+    PluginRegistrarFn {
 
         [] fn plugin_registrar_fn: PluginRegistrarFn(CrateNum) -> Option<DefId>,
+    },
+
+    ProcMacroDeclsStatic {
         [] fn proc_macro_decls_static: ProcMacroDeclsStatic(CrateNum) -> Option<DefId>,
+    },
+
+    CrateDisambiguator {
         [] fn crate_disambiguator: CrateDisambiguator(CrateNum) -> CrateDisambiguator,
+    },
+
+    CrateHash {
         [] fn crate_hash: CrateHash(CrateNum) -> Svh,
+    },
+
+    OriginalCrateName {
         [] fn original_crate_name: OriginalCrateName(CrateNum) -> Symbol,
+    },
+
+    ExtraFileName {
         [] fn extra_filename: ExtraFileName(CrateNum) -> String,
     },
 
-    TypeChecking {
+    ImplementationsOfTrait {
         [] fn implementations_of_trait: implementations_of_trait_node((CrateNum, DefId))
             -> Lrc<Vec<DefId>>,
+    },
+
+    AllTraitImplementations {
         [] fn all_trait_implementations: AllTraitImplementations(CrateNum)
             -> Lrc<Vec<DefId>>,
     },
 
-    Other {
+    DllimportForeignItems {
         [] fn dllimport_foreign_items: DllimportForeignItems(CrateNum)
             -> Lrc<FxHashSet<DefId>>,
+    },
+
+    IsDllimportForeignItem {
         [] fn is_dllimport_foreign_item: IsDllimportForeignItem(DefId) -> bool,
+    },
+
+    IsStaticallyIncludedForeignItem {
         [] fn is_statically_included_foreign_item: IsStaticallyIncludedForeignItem(DefId) -> bool,
+    },
+
+    NativeLibraryKind {
         [] fn native_library_kind: NativeLibraryKind(DefId)
             -> Option<NativeLibraryKind>,
     },
@@ -500,35 +691,89 @@ define_queries! { <'tcx>
             -> Option<Lrc<FxHashMap<ItemLocalId, Lrc<Vec<ObjectLifetimeDefault>>>>>,
     },
 
-    TypeChecking {
+    Visibility {
         [] fn visibility: Visibility(DefId) -> ty::Visibility,
     },
 
-    Other {
+    DepKind {
         [] fn dep_kind: DepKind(CrateNum) -> DepKind,
+    },
+
+    CrateName {
         [] fn crate_name: CrateName(CrateNum) -> Symbol,
+    },
+
+    ItemChildren {
         [] fn item_children: ItemChildren(DefId) -> Lrc<Vec<Export>>,
+    },
+
+    ExternModStmtCnum {
         [] fn extern_mod_stmt_cnum: ExternModStmtCnum(DefId) -> Option<CrateNum>,
+    },
+
+    GetLibFeaturesNode {
 
         [] fn get_lib_features: get_lib_features_node(CrateNum) -> Lrc<LibFeatures>,
+    },
+
+    DefinedLibFeatures {
         [] fn defined_lib_features: DefinedLibFeatures(CrateNum)
             -> Lrc<Vec<(Symbol, Option<Symbol>)>>,
+    },
+
+    GetLangItemsNode {
         [] fn get_lang_items: get_lang_items_node(CrateNum) -> Lrc<LanguageItems>,
+    },
+
+    DefinedLangItems {
         [] fn defined_lang_items: DefinedLangItems(CrateNum) -> Lrc<Vec<(DefId, usize)>>,
+    },
+
+    MissingLangItems {
         [] fn missing_lang_items: MissingLangItems(CrateNum) -> Lrc<Vec<LangItem>>,
+    },
+
+    VisibleParentMapNode {
         [] fn visible_parent_map: visible_parent_map_node(CrateNum)
             -> Lrc<DefIdMap<DefId>>,
+    },
+
+    MissingExternCrateItem {
         [] fn missing_extern_crate_item: MissingExternCrateItem(CrateNum) -> bool,
+    },
+
+    UsedCrateSource {
         [] fn used_crate_source: UsedCrateSource(CrateNum) -> Lrc<CrateSource>,
+    },
+
+    PostorderCnumsNode {
         [] fn postorder_cnums: postorder_cnums_node(CrateNum) -> Lrc<Vec<CrateNum>>,
+    },
+
+    Freevars {
 
         [] fn freevars: Freevars(DefId) -> Option<Lrc<Vec<hir::Freevar>>>,
+    },
+
+    MaybeUnusedTraitImport {
         [] fn maybe_unused_trait_import: MaybeUnusedTraitImport(DefId) -> bool,
+    },
+
+    MaybeUnusedExternCratesNode {
         [] fn maybe_unused_extern_crates: maybe_unused_extern_crates_node(CrateNum)
             -> Lrc<Vec<(DefId, Span)>>,
+    },
+
+    StabilityIndexNode {
 
         [] fn stability_index: stability_index_node(CrateNum) -> Lrc<stability::Index<'tcx>>,
+    },
+
+    AllCrateNumsNode {
         [] fn all_crate_nums: all_crate_nums_node(CrateNum) -> Lrc<Vec<CrateNum>>,
+    },
+
+    AllTraitsNode {
 
         /// A vector of every trait accessible in the whole crate
         /// (i.e., including those from subcrates). This is used only for
@@ -549,17 +794,19 @@ define_queries! { <'tcx>
         [] fn codegen_unit: CodegenUnit(InternedString) -> Arc<CodegenUnit<'tcx>>,
     },
 
-    Other {
+    OutputFilenamesNode {
         [] fn output_filenames: output_filenames_node(CrateNum)
             -> Arc<OutputFilenames>,
     },
 
-    TypeChecking {
+    EraseRegionsTy {
         // Erases regions from `ty` to yield a new type.
         // Normally you would just use `tcx.erase_regions(&value)`,
         // however, which uses this query as a kind of cache.
         [] fn erase_regions_ty: erase_regions_ty(Ty<'tcx>) -> Ty<'tcx>,
+    },
 
+    NormalizeProjectionTy {
         /// Do not call this query directly: invoke `normalize` instead.
         [] fn normalize_projection_ty: NormalizeProjectionTy(
             CanonicalProjectionGoal<'tcx>
@@ -567,11 +814,17 @@ define_queries! { <'tcx>
             Lrc<Canonical<'tcx, canonical::QueryResponse<'tcx, NormalizationResult<'tcx>>>>,
             NoSolution,
         >,
+    },
+
+    NormalizeTyAfterErasingRegions {
 
         /// Do not call this query directly: invoke `normalize_erasing_regions` instead.
         [] fn normalize_ty_after_erasing_regions: NormalizeTyAfterErasingRegions(
             ParamEnvAnd<'tcx, Ty<'tcx>>
         ) -> Ty<'tcx>,
+    },
+
+    ImpliedOutlivesBounds {
 
         [] fn implied_outlives_bounds: ImpliedOutlivesBounds(
             CanonicalTyGoal<'tcx>
@@ -579,6 +832,9 @@ define_queries! { <'tcx>
             Lrc<Canonical<'tcx, canonical::QueryResponse<'tcx, Vec<OutlivesBound<'tcx>>>>>,
             NoSolution,
         >,
+    },
+
+    DropckOutlives {
 
         /// Do not call this query directly: invoke `infcx.at().dropck_outlives()` instead.
         [] fn dropck_outlives: DropckOutlives(
@@ -587,12 +843,18 @@ define_queries! { <'tcx>
             Lrc<Canonical<'tcx, canonical::QueryResponse<'tcx, DropckOutlivesResult<'tcx>>>>,
             NoSolution,
         >,
+    },
+
+    EvaluateObligation {
 
         /// Do not call this query directly: invoke `infcx.predicate_may_hold()` or
         /// `infcx.predicate_must_hold()` instead.
         [] fn evaluate_obligation: EvaluateObligation(
             CanonicalPredicateGoal<'tcx>
         ) -> Result<traits::EvaluationResult, traits::OverflowError>,
+    },
+
+    TypeOpAscribeUserType {
 
         [] fn evaluate_goal: EvaluateGoal(
             traits::ChalkCanonicalGoal<'tcx>
@@ -608,6 +870,9 @@ define_queries! { <'tcx>
             Lrc<Canonical<'tcx, canonical::QueryResponse<'tcx, ()>>>,
             NoSolution,
         >,
+    },
+
+    TypeOpEq {
 
         /// Do not call this query directly: part of the `Eq` type-op
         [] fn type_op_eq: TypeOpEq(
@@ -616,6 +881,9 @@ define_queries! { <'tcx>
             Lrc<Canonical<'tcx, canonical::QueryResponse<'tcx, ()>>>,
             NoSolution,
         >,
+    },
+
+    TypeOpSubtype {
 
         /// Do not call this query directly: part of the `Subtype` type-op
         [] fn type_op_subtype: TypeOpSubtype(
@@ -624,6 +892,9 @@ define_queries! { <'tcx>
             Lrc<Canonical<'tcx, canonical::QueryResponse<'tcx, ()>>>,
             NoSolution,
         >,
+    },
+
+    TypeOpProvePredicate {
 
         /// Do not call this query directly: part of the `ProvePredicate` type-op
         [] fn type_op_prove_predicate: TypeOpProvePredicate(
@@ -632,6 +903,9 @@ define_queries! { <'tcx>
             Lrc<Canonical<'tcx, canonical::QueryResponse<'tcx, ()>>>,
             NoSolution,
         >,
+    },
+
+    TypeOpNormalizeGoal {
 
         /// Do not call this query directly: part of the `Normalize` type-op
         [] fn type_op_normalize_ty: TypeOpNormalizeTy(
@@ -640,6 +914,9 @@ define_queries! { <'tcx>
             Lrc<Canonical<'tcx, canonical::QueryResponse<'tcx, Ty<'tcx>>>>,
             NoSolution,
         >,
+    },
+
+    TypeOfNormalizePredicate {
 
         /// Do not call this query directly: part of the `Normalize` type-op
         [] fn type_op_normalize_predicate: TypeOpNormalizePredicate(
@@ -648,6 +925,9 @@ define_queries! { <'tcx>
             Lrc<Canonical<'tcx, canonical::QueryResponse<'tcx, ty::Predicate<'tcx>>>>,
             NoSolution,
         >,
+    },
+
+    TypeOpNormalizePolyFnSig {
 
         /// Do not call this query directly: part of the `Normalize` type-op
         [] fn type_op_normalize_poly_fn_sig: TypeOpNormalizePolyFnSig(
@@ -656,6 +936,9 @@ define_queries! { <'tcx>
             Lrc<Canonical<'tcx, canonical::QueryResponse<'tcx, ty::PolyFnSig<'tcx>>>>,
             NoSolution,
         >,
+    },
+
+    TypeOpNormalizeFnSif {
 
         /// Do not call this query directly: part of the `Normalize` type-op
         [] fn type_op_normalize_fn_sig: TypeOpNormalizeFnSig(
@@ -664,6 +947,9 @@ define_queries! { <'tcx>
             Lrc<Canonical<'tcx, canonical::QueryResponse<'tcx, ty::FnSig<'tcx>>>>,
             NoSolution,
         >,
+    },
+
+    SubstituteNormalizeAndTestPredicates {
 
         [] fn substitute_normalize_and_test_predicates:
             substitute_normalize_and_test_predicates_node((DefId, &'tcx Substs<'tcx>)) -> bool,
@@ -673,23 +959,35 @@ define_queries! { <'tcx>
         ) -> MethodAutoderefStepsResult<'tcx>,
     },
 
-    Other {
+    TargetFeaturesWhitelist {
         [] fn target_features_whitelist:
             target_features_whitelist_node(CrateNum) -> Lrc<FxHashMap<String, Option<String>>>,
+    },
+
+    InstanceDefSizeEstimate {
 
         // Get an estimate of the size of an InstanceDef based on its MIR for CGU partitioning.
         [] fn instance_def_size_estimate: instance_def_size_estimate_dep_node(ty::InstanceDef<'tcx>)
             -> usize,
+    },
+
+    FeaturesNode {
 
         [] fn features_query: features_node(CrateNum) -> Lrc<feature_gate::Features>,
     },
 
-    TypeChecking {
+    ProgramClausesFor {
         [] fn program_clauses_for: ProgramClausesFor(DefId) -> Clauses<'tcx>,
+    },
+
+    ProgramClausesForEnv {
 
         [] fn program_clauses_for_env: ProgramClausesForEnv(
             traits::Environment<'tcx>
         ) -> Clauses<'tcx>,
+    },
+
+    Environment {
 
         // Get the chalk-style environment of the given item.
         [] fn environment: Environment(DefId) -> traits::Environment<'tcx>,

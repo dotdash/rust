@@ -1040,6 +1040,7 @@ pub enum PlaceContext<'tcx> {
 
 impl<'tcx> PlaceContext<'tcx> {
     /// Returns `true` if this place context represents a drop.
+    #[inline]
     pub fn is_drop(&self) -> bool {
         match *self {
             PlaceContext::MutatingUse(MutatingUseContext::Drop) => true,
@@ -1048,6 +1049,7 @@ impl<'tcx> PlaceContext<'tcx> {
     }
 
     /// Returns `true` if this place context represents a borrow.
+    #[inline]
     pub fn is_borrow(&self) -> bool {
         match *self {
             PlaceContext::NonMutatingUse(NonMutatingUseContext::SharedBorrow(..)) |
@@ -1059,6 +1061,7 @@ impl<'tcx> PlaceContext<'tcx> {
     }
 
     /// Returns `true` if this place context represents a storage live or storage dead marker.
+    #[inline]
     pub fn is_storage_marker(&self) -> bool {
         match *self {
             PlaceContext::NonUse(NonUseContext::StorageLive) |
@@ -1068,6 +1071,7 @@ impl<'tcx> PlaceContext<'tcx> {
     }
 
     /// Returns `true` if this place context represents a storage live marker.
+    #[inline]
     pub fn is_storage_live_marker(&self) -> bool {
         match *self {
             PlaceContext::NonUse(NonUseContext::StorageLive) => true,
@@ -1076,6 +1080,7 @@ impl<'tcx> PlaceContext<'tcx> {
     }
 
     /// Returns `true` if this place context represents a storage dead marker.
+    #[inline]
     pub fn is_storage_dead_marker(&self) -> bool {
         match *self {
             PlaceContext::NonUse(NonUseContext::StorageDead) => true,
@@ -1084,6 +1089,7 @@ impl<'tcx> PlaceContext<'tcx> {
     }
 
     /// Returns `true` if this place context represents a use that potentially changes the value.
+    #[inline]
     pub fn is_mutating_use(&self) -> bool {
         match *self {
             PlaceContext::MutatingUse(..) => true,
@@ -1092,6 +1098,7 @@ impl<'tcx> PlaceContext<'tcx> {
     }
 
     /// Returns `true` if this place context represents a use that does not change the value.
+    #[inline]
     pub fn is_nonmutating_use(&self) -> bool {
         match *self {
             PlaceContext::NonMutatingUse(..) => true,
@@ -1100,6 +1107,7 @@ impl<'tcx> PlaceContext<'tcx> {
     }
 
     /// Returns `true` if this place context represents a use.
+    #[inline]
     pub fn is_use(&self) -> bool {
         match *self {
             PlaceContext::NonUse(..) => false,
@@ -1107,7 +1115,14 @@ impl<'tcx> PlaceContext<'tcx> {
         }
     }
 
+    /// Returns `true` if this place context represents a store.
+    #[inline]
+    pub fn is_store(&self) -> bool {
+        *self == PlaceContext::MutatingUse(MutatingUseContext::Store)
+    }
+
     /// Returns `true` if this place context represents an assignment statement.
+    #[inline]
     pub fn is_place_assignment(&self) -> bool {
         match *self {
             PlaceContext::MutatingUse(MutatingUseContext::Store) |

@@ -19,6 +19,10 @@
 //! (non-mutating) use of `SRC`. These restrictions are conservative and may be relaxed in the
 //! future.
 
+#![allow(dead_code)]
+#![allow(unreachable_code)]
+#![allow(unused_variables)]
+
 use rustc::mir::{Constant, Local, LocalKind, Location, Place, Mir, Operand, Rvalue, StatementKind};
 use rustc::mir::visit::MutVisitor;
 use rustc::ty::TyCtxt;
@@ -34,18 +38,13 @@ impl MirPass for CopyPropagation {
                           mir: &mut Mir<'tcx>) {
         // We only run when the MIR optimization level is > 1.
         // This avoids a slow pass, and messing up debug info.
-        if tcx.sess.opts.debugging_opts.mir_opt_level <= 1 {
+        if tcx.sess.opts.debugging_opts.mir_opt_level < 1 {
             return;
         }
 
         let mut def_use_analysis = DefUseAnalysis::new(mir);
+        def_use_analysis.analyze(mir);
         loop {
-            def_use_analysis.analyze(mir);
-
-            if eliminate_self_assignments(mir, &def_use_analysis) {
-                def_use_analysis.analyze(mir);
-            }
-
             let mut changed = false;
             for dest_local in mir.local_decls.indices() {
                 debug!("Considering destination local: {:?}", dest_local);
@@ -99,7 +98,7 @@ impl MirPass for CopyPropagation {
                             let maybe_action = match *operand {
                                 Operand::Copy(ref src_place) |
                                 Operand::Move(ref src_place) => {
-                                    Action::local_copy(&mir, &def_use_analysis, src_place)
+                                    Action::local_copy(&mir, &mut def_use_analysis, src_place)
                                 }
                                 Operand::Constant(ref src_constant) => {
                                     Action::constant(src_constant)
@@ -118,10 +117,7 @@ impl MirPass for CopyPropagation {
                     }
                 }
 
-                changed = action.perform(mir, &def_use_analysis, dest_local, location) || changed;
-                // FIXME(pcwalton): Update the use-def chains to delete the instructions instead of
-                // regenerating the chains.
-                break
+                changed = action.perform(mir, &mut def_use_analysis, dest_local, location) || changed;
             }
             if !changed {
                 break
@@ -130,50 +126,13 @@ impl MirPass for CopyPropagation {
     }
 }
 
-fn eliminate_self_assignments<'tcx>(
-    mir: &mut Mir<'tcx>,
-    def_use_analysis: &DefUseAnalysis<'tcx>,
-) -> bool {
-    let mut changed = false;
-
-    for dest_local in mir.local_decls.indices() {
-        let dest_use_info = def_use_analysis.local_info(dest_local);
-
-        for def in dest_use_info.defs_not_including_drop() {
-            let location = def.location;
-            if let Some(stmt) = mir[location.block].statements.get(location.statement_index) {
-                match stmt.kind {
-                    StatementKind::Assign(
-                        Place::Local(local),
-                        box Rvalue::Use(Operand::Copy(Place::Local(src_local))),
-                    ) |
-                    StatementKind::Assign(
-                        Place::Local(local),
-                        box Rvalue::Use(Operand::Move(Place::Local(src_local))),
-                    ) if local == dest_local && dest_local == src_local => {}
-                    _ => {
-                        continue;
-                    }
-                }
-            } else {
-                continue;
-            }
-            debug!("Deleting a self-assignment for {:?}", dest_local);
-            mir.make_statement_nop(location);
-            changed = true;
-        }
-    }
-
-    changed
-}
-
 enum Action<'tcx> {
     PropagateLocalCopy(Local),
     PropagateConstant(Constant<'tcx>),
 }
 
 impl<'tcx> Action<'tcx> {
-    fn local_copy(mir: &Mir<'tcx>, def_use_analysis: &DefUseAnalysis, src_place: &Place<'tcx>)
+    fn local_copy(mir: &Mir<'tcx>, def_use_analysis: &mut DefUseAnalysis, src_place: &Place<'tcx>)
                   -> Option<Action<'tcx>> {
         // The source must be a local.
         let src_local = if let Place::Local(local) = *src_place {
@@ -229,7 +188,7 @@ impl<'tcx> Action<'tcx> {
 
     fn perform(self,
                mir: &mut Mir<'tcx>,
-               def_use_analysis: &DefUseAnalysis<'tcx>,
+               def_use_analysis: &mut DefUseAnalysis<'tcx>,
                dest_local: Local,
                location: Location)
                -> bool {
@@ -261,7 +220,7 @@ impl<'tcx> Action<'tcx> {
                 debug!("  Deleting assignment");
                 mir.make_statement_nop(location);
 
-                true
+                false
             }
             Action::PropagateConstant(src_constant) => {
                 // First, remove all markers.

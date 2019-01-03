@@ -29,6 +29,7 @@ pub mod qualify_consts;
 mod qualify_min_const_fn;
 pub mod remove_noop_landing_pads;
 pub mod dump_mir;
+pub mod dead_store_elimination;
 pub mod deaggregator;
 pub mod instcombine;
 pub mod copy_prop;
@@ -282,6 +283,7 @@ fn optimized_mir<'a, 'tcx>(tcx: TyCtxt<'a, 'tcx, 'tcx>, def_id: DefId) -> &'tcx 
         &instcombine::InstCombine,
         &const_prop::ConstProp,
         &simplify_branches::SimplifyBranches::new("after-const-prop"),
+        &dead_store_elimination::DeadStoreElimination,
         &deaggregator::Deaggregator,
         &copy_prop::CopyPropagation,
         &remove_noop_landing_pads::RemoveNoopLandingPads,
