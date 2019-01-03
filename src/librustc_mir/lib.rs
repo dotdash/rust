@@ -28,6 +28,7 @@ Rust MIR: a lowered representation of Rust. Also: an experiment!
 #![feature(try_from)]
 #![feature(reverse_bits)]
 #![cfg_attr(stage0, feature(underscore_imports))]
+#![feature(vec_remove_item)]
 
 #![recursion_limit="256"]
 
