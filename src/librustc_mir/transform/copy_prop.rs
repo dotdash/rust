@@ -23,7 +23,7 @@
 #![allow(unreachable_code)]
 #![allow(unused_variables)]
 
-use rustc::mir::{Constant, Local, LocalKind, Location, Place, Mir, Operand, Rvalue, StatementKind};
+use rustc::mir::{Constant, Local, LocalKind, Location, Place, Mir, Operand, PlaceProjection, Rvalue, StatementKind};
 use rustc::mir::visit::MutVisitor;
 use rustc::ty::TyCtxt;
 use transform::{MirPass, MirSource};
@@ -127,7 +127,7 @@ impl MirPass for CopyPropagation {
 }
 
 enum Action<'tcx> {
-    PropagateLocalCopy(Local),
+    PropagateLocalCopy(Local, Place<'tcx>),
     PropagateConstant(Constant<'tcx>),
 }
 
@@ -136,6 +136,8 @@ impl<'tcx> Action<'tcx> {
                   -> Option<Action<'tcx>> {
         // The source must be a local.
         let src_local = if let Place::Local(local) = *src_place {
+            local
+        } else if let Place::Projection(box PlaceProjection { base: Place::Local(local), .. }) = *src_place {
             local
         } else {
             debug!("  Can't copy-propagate local: source is not a local");
@@ -179,7 +181,7 @@ impl<'tcx> Action<'tcx> {
             return None
         }
 
-        Some(Action::PropagateLocalCopy(src_local))
+        Some(Action::PropagateLocalCopy(src_local, src_place.clone()))
     }
 
     fn constant(src_constant: &Constant<'tcx>) -> Option<Action<'tcx>> {
@@ -193,7 +195,7 @@ impl<'tcx> Action<'tcx> {
                location: Location)
                -> bool {
         match self {
-            Action::PropagateLocalCopy(src_local) => {
+            Action::PropagateLocalCopy(src_local, src_place) => {
                 // Eliminate the destination and the assignment.
                 //
                 // First, remove all markers.
@@ -209,13 +211,13 @@ impl<'tcx> Action<'tcx> {
                 }
 
                 // Replace all uses of the destination local with the source local.
-                def_use_analysis.replace_all_defs_and_uses_with(dest_local, mir, src_local);
+                def_use_analysis.replace_all_defs_and_uses_with(dest_local, mir, src_place);
 
                 // Finally, zap the now-useless assignment instruction.
                 debug!("  Deleting assignment");
-                mir.make_statement_nop(location);
+                // mir.make_statement_nop(location);
 
-                false
+                true
             }
             Action::PropagateConstant(src_constant) => {
                 debug!("  Replacing all uses of {:?} with {:?} (constant)",
