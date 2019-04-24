@@ -1191,6 +1191,58 @@ impl<'a> MethodDef<'a> {
         let sp = trait_.span;
         let variants = &enum_def.variants;
 
+        if variants.is_empty() {
+            // For a zero-variant enum A, currently the compiler
+            // will accept `fn (a: &Self) { match   *a   { } }`
+            // but rejects `fn (a: &Self) { match (&*a,) { } }`
+            // as well as  `fn (a: &Self) { match ( *a,) { } }`
+            //
+            // This means that the strategy of building up a tuple of
+            // all Self arguments fails when Self is a zero variant
+            // enum: rustc rejects the expanded program, even though
+            // the actual code tends to be impossible to execute (at
+            // least safely), according to the type system.
+            //
+            // The most expedient fix for this is to just let the
+            // code fall through to the catch-all.  But even this is
+            // error-prone, since the catch-all as defined above would
+            // generate code like this:
+            //
+            //     _ => { let __self0 = match *self { };
+            //            let __self1 = match *__arg_0 { };
+            //            <catch-all-expr> }
+            //
+            // Which is yields bindings for variables which type
+            // inference cannot resolve to unique types.
+            //
+            // One option to the above might be to add explicit type
+            // annotations.  But the *only* reason to go down that path
+            // would be to try to make the expanded output consistent
+            // with the case when the number of enum variants >= 1.
+            //
+            // That just isn't worth it.  In fact, trying to generate
+            // sensible code for *any* deriving on a zero-variant enum
+            // does not make sense.  But at the same time, for now, we
+            // do not want to cause a compile failure just because the
+            // user happened to attach a deriving to their
+            // zero-variant enum.
+            //
+            // Instead, just generate a failing expression for the
+            // zero variant case, skipping matches and also skipping
+            // delegating back to the end user code entirely.
+            //
+            // (See also #4499 and #12609; note that some of the
+            // discussions there influence what choice we make here;
+            // e.g., if we feature-gate `match x { ... }` when x refers
+            // to an uninhabited type (e.g., a zero-variant enum or a
+            // type holding such an enum), but do not feature-gate
+            // zero-variant enums themselves, then attempting to
+            // derive Debug on such a type could here generate code
+            // that needs the feature gate enabled.)
+
+            return deriving::call_intrinsic(cx, sp, "unreachable", vec![]);
+        }
+
         let self_arg_names = iter::once("__self".to_string()).chain(
             self_args.iter()
                 .enumerate()
@@ -1203,24 +1255,6 @@ impl<'a> MethodDef<'a> {
         let self_arg_idents = self_arg_names.iter()
             .map(|name| cx.ident_of(&name[..]))
             .collect::<Vec<ast::Ident>>();
-
-        // The `vi_idents` will be bound, solely in the catch-all, to
-        // a series of let statements mapping each self_arg to an int
-        // value corresponding to its discriminant.
-        let vi_idents = self_arg_names.iter()
-            .map(|name| {
-                let vi_suffix = format!("{}_vi", &name[..]);
-                cx.ident_of(&vi_suffix[..]).gensym()
-            })
-            .collect::<Vec<ast::Ident>>();
-
-        // Builds, via callback to call_substructure_method, the
-        // delegated expression that handles the catch-all case,
-        // using `__variants_tuple` to drive logic if necessary.
-        let catch_all_substructure =
-            EnumNonMatchingCollapsed(self_arg_idents, &variants[..], &vi_idents[..]);
-
-        let first_fieldless = variants.iter().find(|v| v.node.data.fields().is_empty());
 
         // These arms are of the form:
         // (Variant1, Variant1, ...) => Body1
@@ -1315,6 +1349,8 @@ impl<'a> MethodDef<'a> {
             })
             .collect();
 
+        let first_fieldless = variants.iter().find(|v| v.node.data.fields().is_empty());
+
         let default = match first_fieldless {
             Some(v) if self.unify_fieldless_variants => {
                 // We need a default case that handles the fieldless variants.
@@ -1336,9 +1372,16 @@ impl<'a> MethodDef<'a> {
             }
             _ => None,
         };
-        if let Some(arm) = default {
-            match_arms.push(cx.arm(sp, vec![cx.pat_wild(sp)], arm));
-        }
+
+        // The `vi_idents` will be bound, solely in the catch-all, to
+        // a series of let statements mapping each self_arg to an int
+        // value corresponding to its discriminant.
+        let vi_idents = self_arg_names.iter()
+            .map(|name| {
+                let vi_suffix = format!("{}_vi", &name[..]);
+                cx.ident_of(&vi_suffix[..]).gensym()
+            })
+            .collect::<Vec<ast::Ident>>();
 
         // We will usually need the catch-all after matching the
         // tuples `(VariantK, VariantK, ...)` for each VariantK of the
@@ -1354,30 +1397,51 @@ impl<'a> MethodDef<'a> {
         // * In either of the two cases above, if we *did* add a
         //   catch-all `_` match, it would trigger the
         //   unreachable-pattern error.
-        //
-        if variants.len() > 1 && self_args.len() > 1 {
-            // Build a series of let statements mapping each self_arg
-            // to its discriminant value. If this is a C-style enum
-            // with a specific repr type, then casts the values to
-            // that type.  Otherwise casts to `i32` (the default repr
-            // type).
-            //
-            // i.e., for `enum E<T> { A, B(1), C(T, T) }`, and a deriving
-            // with three Self args, builds three statements:
-            //
-            // ```
-            // let __self0_vi = unsafe {
-            //     std::intrinsics::discriminant_value(&self) } as i32;
-            // let __self1_vi = unsafe {
-            //     std::intrinsics::discriminant_value(&arg1) } as i32;
-            // let __self2_vi = unsafe {
-            //     std::intrinsics::discriminant_value(&arg2) } as i32;
-            // ```
-            let mut index_let_stmts: Vec<ast::Stmt> = Vec::with_capacity(vi_idents.len() + 1);
 
-            // We also build an expression which checks whether all discriminants are equal
-            // discriminant_test = __self0_vi == __self1_vi && __self0_vi == __self2_vi && ...
-            let mut discriminant_test = cx.expr_bool(sp, true);
+        let is_non_trivial = variants.len() > 1 && self_args.len() > 1;
+        let catch_all_expr = if is_non_trivial {
+            // Builds, via callback to call_substructure_method, the
+            // delegated expression that handles the catch-all case,
+            // using `__variants_tuple` to drive logic if necessary.
+            let catch_all_substructure =
+                EnumNonMatchingCollapsed(self_arg_idents, &variants[..], &vi_idents[..]);
+
+            Some(self.call_substructure_method(cx,
+                                               trait_,
+                                               type_ident,
+                                               &self_args[..],
+                                               nonself_args,
+                                               &catch_all_substructure))
+        } else {
+            None
+        };
+
+        // Build a series of let statements mapping each self_arg
+        // to its discriminant value. If this is a C-style enum
+        // with a specific repr type, then casts the values to
+        // that type.  Otherwise casts to `i32` (the default repr
+        // type).
+        //
+        // i.e., for `enum E<T> { A, B(1), C(T, T) }`, and a deriving
+        // with three Self args, builds three statements:
+        //
+        // ```
+        // let __self0_vi = unsafe {
+        //     std::intrinsics::discriminant_value(&self) } as i32;
+        // let __self1_vi = unsafe {
+        //     std::intrinsics::discriminant_value(&arg1) } as i32;
+        // let __self2_vi = unsafe {
+        //     std::intrinsics::discriminant_value(&arg2) } as i32;
+        // ```
+
+        let mut index_let_stmts: Vec<ast::Stmt> = Vec::new();
+
+        // We also build an expression which checks whether all discriminants are equal
+        // discriminant_test = __self0_vi == __self1_vi && __self0_vi == __self2_vi && ...
+        let mut discriminant_test = cx.expr_bool(sp, true);
+
+        if is_non_trivial {
+            index_let_stmts.reserve(vi_idents.len() + 1);
 
             let target_type_name = find_repr_type_name(&cx.parse_sess, type_attrs);
 
@@ -1405,90 +1469,14 @@ impl<'a> MethodDef<'a> {
                     }
                 }
             }
+        }
 
-            let arm_expr = self.call_substructure_method(cx,
-                                                         trait_,
-                                                         type_ident,
-                                                         &self_args[..],
-                                                         nonself_args,
-                                                         &catch_all_substructure);
-
-            // Final wrinkle: the self_args are expressions that deref
-            // down to desired places, but we cannot actually deref
-            // them when they are fed as r-values into a tuple
-            // expression; here add a layer of borrowing, turning
-            // `(*self, *__arg_0, ...)` into `(&*self, &*__arg_0, ...)`.
-            self_args.map_in_place(|self_arg| cx.expr_addr_of(sp, self_arg));
-            let match_arg = cx.expr(sp, ast::ExprKind::Tup(self_args));
-
-            // Lastly we create an expression which branches on all discriminants being equal
-            //  if discriminant_test {
-            //      match (...) {
-            //          (Variant1, Variant1, ...) => Body1
-            //          (Variant2, Variant2, ...) => Body2,
-            //          ...
-            //          _ => ::core::intrinsics::unreachable()
-            //      }
-            //  }
-            //  else {
-            //      <delegated expression referring to __self0_vi, et al.>
-            //  }
-            let all_match = cx.expr_match(sp, match_arg, match_arms);
-            let arm_expr = cx.expr_if(sp, discriminant_test, all_match, Some(arm_expr));
-            index_let_stmts.push(cx.stmt_expr(arm_expr));
-            cx.expr_block(cx.block(sp, index_let_stmts))
-        } else if variants.is_empty() {
-            // As an additional wrinkle, For a zero-variant enum A,
-            // currently the compiler
-            // will accept `fn (a: &Self) { match   *a   { } }`
-            // but rejects `fn (a: &Self) { match (&*a,) { } }`
-            // as well as  `fn (a: &Self) { match ( *a,) { } }`
-            //
-            // This means that the strategy of building up a tuple of
-            // all Self arguments fails when Self is a zero variant
-            // enum: rustc rejects the expanded program, even though
-            // the actual code tends to be impossible to execute (at
-            // least safely), according to the type system.
-            //
-            // The most expedient fix for this is to just let the
-            // code fall through to the catch-all.  But even this is
-            // error-prone, since the catch-all as defined above would
-            // generate code like this:
-            //
-            //     _ => { let __self0 = match *self { };
-            //            let __self1 = match *__arg_0 { };
-            //            <catch-all-expr> }
-            //
-            // Which is yields bindings for variables which type
-            // inference cannot resolve to unique types.
-            //
-            // One option to the above might be to add explicit type
-            // annotations.  But the *only* reason to go down that path
-            // would be to try to make the expanded output consistent
-            // with the case when the number of enum variants >= 1.
-            //
-            // That just isn't worth it.  In fact, trying to generate
-            // sensible code for *any* deriving on a zero-variant enum
-            // does not make sense.  But at the same time, for now, we
-            // do not want to cause a compile failure just because the
-            // user happened to attach a deriving to their
-            // zero-variant enum.
-            //
-            // Instead, just generate a failing expression for the
-            // zero variant case, skipping matches and also skipping
-            // delegating back to the end user code entirely.
-            //
-            // (See also #4499 and #12609; note that some of the
-            // discussions there influence what choice we make here;
-            // e.g., if we feature-gate `match x { ... }` when x refers
-            // to an uninhabited type (e.g., a zero-variant enum or a
-            // type holding such an enum), but do not feature-gate
-            // zero-variant enums themselves, then attempting to
-            // derive Debug on such a type could here generate code
-            // that needs the feature gate enabled.)
-
-            deriving::call_intrinsic(cx, sp, "unreachable", vec![])
+        let main_expr = if match_arms.is_empty() {
+            default.expect("No match arms generated for non-empty enum!")
         } else {
+            if let Some(arm) = default {
+                match_arms.push(cx.arm(sp, vec![cx.pat_wild(sp)], arm));
+            }
 
             // Final wrinkle: the self_args are expressions that deref
             // down to desired places, but we cannot actually deref
@@ -1496,8 +1484,17 @@ impl<'a> MethodDef<'a> {
             // expression; here add a layer of borrowing, turning
             // `(*self, *__arg_0, ...)` into `(&*self, &*__arg_0, ...)`.
             self_args.map_in_place(|self_arg| cx.expr_addr_of(sp, self_arg));
+
             let match_arg = cx.expr(sp, ast::ExprKind::Tup(self_args));
             cx.expr_match(sp, match_arg, match_arms)
+        };
+
+         if is_non_trivial {
+            let arm_expr = cx.expr_if(sp, discriminant_test, main_expr, catch_all_expr);
+            index_let_stmts.push(cx.stmt_expr(arm_expr));
+            cx.expr_block(cx.block(sp, index_let_stmts))
+        } else {
+            main_expr
         }
     }
 

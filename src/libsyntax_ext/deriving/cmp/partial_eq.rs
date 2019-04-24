@@ -61,8 +61,13 @@ pub fn expand_deriving_partial_eq(cx: &mut ExtCtxt<'_>,
     }
 
     macro_rules! md {
-        ($name:expr, $f:ident) => { {
-            let inline = cx.meta_word(span, sym::inline);
+        ($name:expr, $f:ident, $always_inline:expr) => { {
+            let inline = if $always_inline {
+                let always = cx.meta_list_item_word(span, sym::always);
+                cx.meta_list(span, sym::inline, vec![always])
+            } else {
+                cx.meta_word(span, sym::inline)
+            };
             let attrs = vec![cx.attribute(span, inline)];
             MethodDef {
                 name: $name,
@@ -83,9 +88,10 @@ pub fn expand_deriving_partial_eq(cx: &mut ExtCtxt<'_>,
     // avoid defining `ne` if we can
     // c-like enums, enums without any fields and structs without fields
     // can safely define only `eq`.
-    let mut methods = vec![md!("eq", cs_eq)];
-    if !is_type_without_fields(item) {
-        methods.push(md!("ne", cs_ne));
+    let is_without_fields = is_type_without_fields(item);
+    let mut methods = vec![md!("eq", cs_eq, is_without_fields)];
+    if !is_without_fields {
+        methods.push(md!("ne", cs_ne, is_without_fields));
     }
 
     let trait_def = TraitDef {
