@@ -112,9 +112,6 @@ impl IntrinsicCallMethods<'tcx> for Builder<'a, 'll, 'tcx> {
                 &args.iter().map(|arg| arg.immediate()).collect::<Vec<_>>(),
                 None,
             ),
-            "unreachable" => {
-                return;
-            }
             "likely" => {
                 let expect = self.get_intrinsic(&("llvm.expect.i1"));
                 self.call(expect, &[args[0].immediate(), self.const_bool(true)], None)
@@ -214,7 +211,7 @@ impl IntrinsicCallMethods<'tcx> for Builder<'a, 'll, 'tcx> {
                 return;
             }
             // Effectively no-ops
-            "uninit" | "forget" => {
+            "uninit" => {
                 return;
             }
             "offset" => {
@@ -599,8 +596,6 @@ impl IntrinsicCallMethods<'tcx> for Builder<'a, 'll, 'tcx> {
                     }
                 }
             }
-
-            "discriminant_value" => args[0].deref(self.cx()).codegen_get_discr(self, ret_ty),
 
             name if name.starts_with("simd_") => {
                 match generic_simd_intrinsic(self, name, callee_ty, args, ret_ty, llret_ty, span) {

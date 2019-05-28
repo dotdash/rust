@@ -26,6 +26,7 @@ pub mod erase_regions;
 pub mod generator;
 pub mod inline;
 pub mod instcombine;
+pub mod lower_intrinsics;
 pub mod no_landing_pads;
 pub mod promote_consts;
 pub mod qualify_min_const_fn;
@@ -303,6 +304,7 @@ fn run_optimization_passes<'tcx>(
             &uninhabited_enum_branching::UninhabitedEnumBranching,
             &simplify::SimplifyCfg::new("after-uninhabited-enum-branching"),
             &inline::Inline,
+            &lower_intrinsics::LowerIntrinsics,
             // Lowering generator control-flow and variables
             // has to happen before we do anything else to them.
             &generator::StateTransform,

@@ -9,6 +9,7 @@ use crate::MemFlags;
 
 use rustc::middle::lang_items::ExchangeMallocFnLangItem;
 use rustc::mir;
+use rustc::session::config::OptLevel;
 use rustc::ty::cast::{CastTy, IntTy};
 use rustc::ty::layout::{self, HasTyCtxt, LayoutOf};
 use rustc::ty::{self, adjustment::PointerCast, Instance, Ty, TyCtxt};
@@ -317,7 +318,8 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                                 signed = !scalar.is_bool() && s;
 
                                 let er = scalar.valid_range_exclusive(bx.cx());
-                                if er.end != er.start
+                                if self.cx.sess().opts.optimize != OptLevel::No
+                                    && er.end != er.start
                                     && scalar.valid_range.end() > scalar.valid_range.start()
                                 {
                                     // We want `table[e as usize]` to not
