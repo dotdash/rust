@@ -529,6 +529,7 @@ impl<'a, 'tcx: 'a, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             _ => FnType::new(&bx, sig, &extra_args)
         };
 
+
         // Emit a panic or a no-op for `panic_if_uninhabited`.
         if intrinsic == Some("panic_if_uninhabited") {
             let ty = instance.unwrap().substs.type_at(0);

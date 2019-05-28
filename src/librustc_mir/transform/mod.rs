@@ -18,6 +18,7 @@ pub mod check_unsafety;
 pub mod simplify_branches;
 pub mod simplify;
 pub mod erase_regions;
+pub mod lower_intrinsics;
 pub mod no_landing_pads;
 pub mod rustc_peek;
 pub mod elaborate_drops;
@@ -258,6 +259,7 @@ fn optimized_mir<'a, 'tcx>(tcx: TyCtxt<'a, 'tcx, 'tcx>, def_id: DefId) -> &'tcx 
         // run fairly late, but before optimizations begin.
         &add_call_guards::AllCallEdges,
         &add_retag::AddRetag,
+        &lower_intrinsics::LowerIntrinsics,
 
         &simplify::SimplifyCfg::new("elaborate-drops"),
 

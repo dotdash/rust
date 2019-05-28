@@ -3,6 +3,7 @@ use rustc::ty::cast::{CastTy, IntTy};
 use rustc::ty::layout::{self, LayoutOf, HasTyCtxt};
 use rustc::mir;
 use rustc::middle::lang_items::ExchangeMallocFnLangItem;
+use rustc::session::config::OptLevel;
 use rustc_apfloat::{ieee, Float, Status, Round};
 use std::{u128, i128};
 use syntax::symbol::sym;
@@ -295,7 +296,8 @@ impl<'a, 'tcx: 'a, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                                 signed = !scalar.is_bool() && s;
 
                                 let er = scalar.valid_range_exclusive(bx.cx());
-                                if er.end != er.start &&
+                                if self.cx.sess().opts.optimize != OptLevel::No &&
+                                   er.end != er.start &&
                                    scalar.valid_range.end() > scalar.valid_range.start() {
                                     // We want `table[e as usize]` to not
                                     // have bound checks, and this is the most
