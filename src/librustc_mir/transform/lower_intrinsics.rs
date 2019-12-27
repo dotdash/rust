@@ -6,7 +6,7 @@ use rustc_target::spec::abi::Abi;
 pub struct LowerIntrinsics;
 
 impl<'tcx> MirPass<'tcx> for LowerIntrinsics {
-    fn run_pass(&self, tcx: TyCtxt<'tcx>, src: MirSource<'tcx>, body: &mut BodyCache<'tcx>) {
+    fn run_pass(&self, tcx: TyCtxt<'tcx>, src: MirSource<'tcx>, body: &mut BodyAndCache<'tcx>) {
         debug!("LowerIntrinsics - simplifying {:?}", body);
 
         let param_env = tcx.param_env(src.def_id());
