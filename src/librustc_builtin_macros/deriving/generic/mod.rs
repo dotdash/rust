@@ -1263,13 +1263,7 @@ impl<'a> MethodDef<'a> {
         }
 
         let self_arg_names = iter::once("__self".to_string())
-            .chain(
-                self_args
-                    .iter()
-                    .enumerate()
-                    .skip(1)
-                    .map(|(arg_count, _self_arg)| format!("__arg_{}", arg_count)),
-            )
+            .chain((1..self_args.len()).map(|i| format!("__arg_{}", i)))
             .collect::<Vec<String>>();
 
         let self_arg_idents =
