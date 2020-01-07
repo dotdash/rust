@@ -37,6 +37,7 @@ pub fn expand_deriving_default(
             attributes: attrs,
             is_unsafe: false,
             unify_fieldless_variants: false,
+            collapse_all: false,
             combine_substructure: combine_substructure(Box::new(|a, b, c| {
                 default_substructure(a, b, c)
             })),

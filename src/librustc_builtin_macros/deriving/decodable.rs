@@ -60,6 +60,7 @@ pub fn expand_deriving_rustc_decodable(
             attributes: Vec::new(),
             is_unsafe: false,
             unify_fieldless_variants: false,
+            collapse_all: false,
             combine_substructure: combine_substructure(Box::new(|a, b, c| {
                 decodable_substructure(a, b, c, krate)
             })),

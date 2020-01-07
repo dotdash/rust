@@ -34,6 +34,7 @@ pub fn expand_deriving_ord(
             attributes: attrs,
             is_unsafe: false,
             unify_fieldless_variants: true,
+            collapse_all: true,
             combine_substructure: combine_substructure(Box::new(|a, b, c| cs_cmp(a, b, c))),
         }],
         associated_types: Vec::new(),

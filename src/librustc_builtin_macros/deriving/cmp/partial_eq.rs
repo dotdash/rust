@@ -5,7 +5,8 @@ use crate::deriving::{path_local, path_std};
 use rustc_expand::base::{Annotatable, ExtCtxt};
 use rustc_span::symbol::sym;
 use rustc_span::Span;
-use syntax::ast::{BinOpKind, Expr, MetaItem};
+use syntax::ast::{BinOpKind, Expr, Ident, MetaItem};
+use syntax::attr;
 use syntax::ptr::P;
 
 pub fn expand_deriving_partial_eq(
@@ -49,7 +50,9 @@ pub fn expand_deriving_partial_eq(
                     None => cx.expr_bool(span, base),
                 }
             },
-            Box::new(|cx, span, _, _| cx.expr_bool(span, !base)),
+            Box::new(|cx, span, (_, vis), _| {
+                op(cx, span, cx.expr_ident(span, vis[0]), &[cx.expr_ident(span, vis[1])])
+            }),
             cx,
             span,
             substr,
@@ -64,8 +67,13 @@ pub fn expand_deriving_partial_eq(
     }
 
     macro_rules! md {
-        ($name:expr, $f:ident) => {{
-            let inline = cx.meta_word(span, sym::inline);
+        ($name:expr, $f:ident, $always_inline:expr) => {{
+            let inline = if $always_inline {
+                let always = attr::mk_nested_word_item(Ident::new(sym::always, span));
+                attr::mk_list_item(Ident::new(sym::inline, span), vec![always])
+            } else {
+                cx.meta_word(span, sym::inline)
+            };
             let attrs = vec![cx.attribute(inline)];
             MethodDef {
                 name: $name,
@@ -76,6 +84,7 @@ pub fn expand_deriving_partial_eq(
                 attributes: attrs,
                 is_unsafe: false,
                 unify_fieldless_variants: true,
+                collapse_all: $always_inline,
                 combine_substructure: combine_substructure(Box::new(|a, b, c| $f(a, b, c))),
             }
         }};
@@ -92,9 +101,10 @@ pub fn expand_deriving_partial_eq(
     // avoid defining `ne` if we can
     // c-like enums, enums without any fields and structs without fields
     // can safely define only `eq`.
-    let mut methods = vec![md!("eq", cs_eq)];
-    if !is_type_without_fields(item) {
-        methods.push(md!("ne", cs_ne));
+    let is_without_fields = is_type_without_fields(item);
+    let mut methods = vec![md!("eq", cs_eq, is_without_fields)];
+    if !is_without_fields {
+        methods.push(md!("ne", cs_ne, is_without_fields));
     }
 
     let trait_def = TraitDef {

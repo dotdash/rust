@@ -92,6 +92,7 @@ pub fn expand_deriving_clone(
             attributes: attrs,
             is_unsafe: false,
             unify_fieldless_variants: false,
+            collapse_all: false,
             combine_substructure: substructure,
         }],
         associated_types: Vec::new(),

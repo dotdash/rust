@@ -190,7 +190,6 @@ use syntax::ast::{GenericArg, GenericParamKind, VariantData};
 use syntax::attr;
 use syntax::ptr::P;
 use syntax::sess::ParseSess;
-use syntax::util::map_in_place::MapInPlace;
 
 use ty::{LifetimeBounds, Path, Ptr, PtrTy, Self_, Ty};
 
@@ -249,6 +248,7 @@ pub struct MethodDef<'a> {
 
     /// Can we combine fieldless variants for enums into a single match arm?
     pub unify_fieldless_variants: bool,
+    pub collapse_all: bool,
 
     pub combine_substructure: RefCell<CombineSubstructureFunc<'a>>,
 }
@@ -1204,7 +1204,7 @@ impl<'a> MethodDef<'a> {
         enum_def: &'b EnumDef,
         type_attrs: &[ast::Attribute],
         type_ident: Ident,
-        mut self_args: Vec<P<Expr>>,
+        self_args: Vec<P<Expr>>,
         nonself_args: &[P<Expr>],
     ) -> P<Expr> {
         let sp = trait_.span;
@@ -1266,28 +1266,6 @@ impl<'a> MethodDef<'a> {
             .chain((1..self_args.len()).map(|i| format!("__arg_{}", i)))
             .collect::<Vec<String>>();
 
-        let self_arg_idents =
-            self_arg_names.iter().map(|name| cx.ident_of(name, sp)).collect::<Vec<ast::Ident>>();
-
-        // The `vi_idents` will be bound, solely in the catch-all, to
-        // a series of let statements mapping each self_arg to an int
-        // value corresponding to its discriminant.
-        let vi_idents = self_arg_names
-            .iter()
-            .map(|name| {
-                let vi_suffix = format!("{}_vi", &name[..]);
-                cx.ident_of(&vi_suffix[..], trait_.span)
-            })
-            .collect::<Vec<ast::Ident>>();
-
-        // Builds, via callback to call_substructure_method, the
-        // delegated expression that handles the catch-all case,
-        // using `__variants_tuple` to drive logic if necessary.
-        let catch_all_substructure =
-            EnumNonMatchingCollapsed(self_arg_idents, &variants[..], &vi_idents[..]);
-
-        let first_fieldless = variants.iter().find(|v| v.data.fields().is_empty());
-
         // These arms are of the form:
         // (Variant1, Variant1, ...) => Body1
         // (Variant2, Variant2, ...) => Body2
@@ -1325,7 +1303,11 @@ impl<'a> MethodDef<'a> {
                 }
 
                 // Here is the pat = `(&VariantK, &VariantK, ...)`
-                let single_pat = cx.pat_tuple(sp, subpats);
+                let single_pat = if subpats.len() == 1 {
+                    subpats.pop().unwrap()
+                } else {
+                    cx.pat_tuple(sp, subpats)
+                };
 
                 // For the BodyK, we need to delegate to our caller,
                 // passing it an EnumMatching to indicate which case
@@ -1392,49 +1374,74 @@ impl<'a> MethodDef<'a> {
             })
             .collect();
 
-        let default = match first_fieldless {
-            Some(v) if self.unify_fieldless_variants => {
-                // We need a default case that handles the fieldless variants.
-                // The index and actual variant aren't meaningful in this case,
-                // so just use whatever
+        let unified_arm = if self.unify_fieldless_variants {
+            // We need a default case that handles the fieldless variants.
+            // The index and actual variant aren't meaningful in this case,
+            // so just use the first fieldless variant
+            variants.iter().find(|v| v.data.fields().is_empty()).map(|v| {
                 let substructure = EnumMatching(0, variants.len(), v, Vec::new());
-                Some(self.call_substructure_method(
+                self.call_substructure_method(
                     cx,
                     trait_,
                     type_ident,
                     &self_args[..],
                     nonself_args,
                     &substructure,
-                ))
-            }
-            _ if variants.len() > 1 && self_args.len() > 1 => {
+                )
+            })
+        } else {
+            None
+        };
+
+        let needs_variant_eq_check = variants.len() > 1 && self_args.len() > 1;
+
+        let arms_empty = match_arms.is_empty();
+
+        // Generate the main expression, which is either a single unified expression for all cases,
+        // or a match expression with handlers for each case
+        let main_expr = if arms_empty {
+            unified_arm.expect("No match arms generated for non-empty enum!")
+        } else {
+            if let Some(arm) = unified_arm {
+                match_arms.push(cx.arm(sp, cx.pat_wild(sp), arm));
+            } else if needs_variant_eq_check {
                 // Since we know that all the arguments will match if we reach
                 // the match expression we add the unreachable intrinsics as the
                 // result of the catch all which should help llvm in optimizing it
-                Some(deriving::call_intrinsic(cx, sp, "unreachable", vec![]))
+                let call_unreachable = deriving::call_intrinsic(cx, sp, "unreachable", vec![]);
+                match_arms.push(cx.arm(sp, cx.pat_wild(sp), call_unreachable));
             }
-            _ => None,
-        };
-        if let Some(arm) = default {
-            match_arms.push(cx.arm(sp, cx.pat_wild(sp), arm));
-        }
 
-        // We will usually need the catch-all after matching the
-        // tuples `(VariantK, VariantK, ...)` for each VariantK of the
-        // enum.  But:
-        //
-        // * when there is only one Self arg, the arms above suffice
-        // (and the deriving we call back into may not be prepared to
-        // handle EnumNonMatchCollapsed), and,
-        //
-        // * when the enum has only one variant, the single arm that
-        // is already present always suffices.
-        //
-        // * In either of the two cases above, if we *did* add a
-        //   catch-all `_` match, it would trigger the
-        //   unreachable-pattern error.
-        //
-        if variants.len() > 1 && self_args.len() > 1 {
+            // Final wrinkle: the self_args are expressions that deref
+            // down to desired places, but we cannot actually deref
+            // them when they are fed as r-values into a tuple
+            // expression; here add a layer of borrowing, turning
+            // `(*self, *__arg_0, ...)` into `(&*self, &*__arg_0, ...)`.
+            let match_arg = if self_args.len() == 1 {
+                cx.expr_addr_of(sp, self_args[0].clone())
+            } else {
+                let self_addrs =
+                    self_args.iter().map(|arg| cx.expr_addr_of(sp, arg.clone())).collect();
+                cx.expr(sp, ast::ExprKind::Tup(self_addrs))
+            };
+
+            cx.expr_match(sp, match_arg, match_arms)
+        };
+
+        // If we have multiple self args, and they can have different variants, wrap the main
+        // expression in a check for variant equality
+        if needs_variant_eq_check {
+            // The `vi_idents` will be bound, solely in the catch-all, to
+            // a series of let statements mapping each self_arg to an int
+            // value corresponding to its discriminant.
+            let vi_idents = self_arg_names
+                .iter()
+                .map(|name| {
+                    let vi_suffix = format!("{}_vi", &name[..]);
+                    cx.ident_of(&vi_suffix[..], trait_.span)
+                })
+                .collect::<Vec<ast::Ident>>();
+
             // Build a series of let statements mapping each self_arg
             // to its discriminant value. If this is a C-style enum
             // with a specific repr type, then casts the values to
@@ -1452,7 +1459,7 @@ impl<'a> MethodDef<'a> {
             // let __self2_vi = unsafe {
             //     std::intrinsics::discriminant_value(&arg2) } as i32;
             // ```
-            let mut index_let_stmts: Vec<ast::Stmt> = Vec::with_capacity(vi_idents.len() + 1);
+            let mut index_let_stmts: Vec<ast::Stmt> = Vec::with_capacity(self_arg_names.len() + 1);
 
             // We also build an expression which checks whether all discriminants are equal
             // discriminant_test = __self0_vi == __self1_vi && __self0_vi == __self2_vi && ...
@@ -1485,7 +1492,18 @@ impl<'a> MethodDef<'a> {
                 }
             }
 
-            let arm_expr = self.call_substructure_method(
+            let self_arg_idents = self_arg_names
+                .iter()
+                .map(|name| cx.ident_of(name, sp))
+                .collect::<Vec<ast::Ident>>();
+
+            // Builds, via callback to call_substructure_method, the
+            // delegated expression that handles the catch-all case,
+            // using `__variants_tuple` to drive logic if necessary.
+            let catch_all_substructure =
+                EnumNonMatchingCollapsed(self_arg_idents, &variants[..], &vi_idents[..]);
+
+            let non_matching_expr = self.call_substructure_method(
                 cx,
                 trait_,
                 type_ident,
@@ -1494,39 +1512,17 @@ impl<'a> MethodDef<'a> {
                 &catch_all_substructure,
             );
 
-            // Final wrinkle: the self_args are expressions that deref
-            // down to desired places, but we cannot actually deref
-            // them when they are fed as r-values into a tuple
-            // expression; here add a layer of borrowing, turning
-            // `(*self, *__arg_0, ...)` into `(&*self, &*__arg_0, ...)`.
-            self_args.map_in_place(|self_arg| cx.expr_addr_of(sp, self_arg));
-            let match_arg = cx.expr(sp, ast::ExprKind::Tup(self_args));
+            if self.collapse_all && arms_empty {
+                index_let_stmts.push(cx.stmt_expr(non_matching_expr));
+            } else {
+                let cond_expr =
+                    cx.expr_if(sp, discriminant_test, main_expr, Some(non_matching_expr));
+                index_let_stmts.push(cx.stmt_expr(cond_expr));
+            }
 
-            // Lastly we create an expression which branches on all discriminants being equal
-            //  if discriminant_test {
-            //      match (...) {
-            //          (Variant1, Variant1, ...) => Body1
-            //          (Variant2, Variant2, ...) => Body2,
-            //          ...
-            //          _ => ::core::intrinsics::unreachable()
-            //      }
-            //  }
-            //  else {
-            //      <delegated expression referring to __self0_vi, et al.>
-            //  }
-            let all_match = cx.expr_match(sp, match_arg, match_arms);
-            let arm_expr = cx.expr_if(sp, discriminant_test, all_match, Some(arm_expr));
-            index_let_stmts.push(cx.stmt_expr(arm_expr));
             cx.expr_block(cx.block(sp, index_let_stmts))
         } else {
-            // Final wrinkle: the self_args are expressions that deref
-            // down to desired places, but we cannot actually deref
-            // them when they are fed as r-values into a tuple
-            // expression; here add a layer of borrowing, turning
-            // `(*self, *__arg_0, ...)` into `(&*self, &*__arg_0, ...)`.
-            self_args.map_in_place(|self_arg| cx.expr_addr_of(sp, self_arg));
-            let match_arg = cx.expr(sp, ast::ExprKind::Tup(self_args));
-            cx.expr_match(sp, match_arg, match_arms)
+            main_expr
         }
     }
 
